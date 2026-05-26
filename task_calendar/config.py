@@ -9,5 +9,5 @@ DATABASE_URL_ENV = "TASK_CALENDAR_DATABASE_URL"
 
 
 def database_url_from_env() -> str:
-    """Возвращает URL к базе данных из окружения"""
+    """Return the database URL from the environment or the default value."""
     return os.environ.get(DATABASE_URL_ENV, DEFAULT_DATABASE_URL)

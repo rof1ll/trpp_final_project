@@ -1,0 +1,10 @@
+.git
+.obsidian
+docs/_build
+dist
+task_calendar.egg-info
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env

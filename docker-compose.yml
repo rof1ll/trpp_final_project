@@ -5,10 +5,24 @@ services:
       POSTGRES_DB: task_calendar
       POSTGRES_USER: task_calendar
       POSTGRES_PASSWORD: task_calendar
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U task_calendar -d task_calendar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TASK_CALENDAR_DATABASE_URL: postgresql://task_calendar:task_calendar@postgres:5432/task_calendar
+    command: ["python", "-m", "task_calendar.cli", "list", "--all"]
 
 volumes:
   postgres_data:

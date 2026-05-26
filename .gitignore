@@ -11,6 +11,7 @@ env/
 .ruff_cache/
 .mypy_cache/
 
+docs/
 *.sqlite3
 *.db
 dist/

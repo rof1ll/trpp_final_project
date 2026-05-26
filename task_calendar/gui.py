@@ -1,5 +1,3 @@
-"""PySide6 desktop interface for the task calendar."""
-
 from __future__ import annotations
 
 import argparse
@@ -122,8 +120,8 @@ def _create_schedule_board_class(QtCore: object, QtGui: object, QtWidgets: objec
             self.start_date = date.today()
             self.visible_days = 7
             self.setObjectName("dayScheduleBoard")
-            self.setMinimumWidth(_schedule_board_width(self.visible_days))
-            self.setMinimumHeight(_day_board_height())
+            self.setMinimumWidth(_schedule_board_min_width(self.visible_days))
+            self.setMinimumHeight(_day_board_height(self.visible_days))
 
         def set_start_date(self, value: date, visible_days: int) -> None:
             self.start_date = value
@@ -135,7 +133,11 @@ def _create_schedule_board_class(QtCore: object, QtGui: object, QtWidgets: objec
             painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             painter.fillRect(self.rect(), QtGui.QColor("#ffffff"))
 
-            day_width = _day_column_width(self.visible_days)
+            if self.visible_days == 1:
+                self._paint_split_day(painter)
+                return
+
+            day_width = _day_column_width(self.visible_days, self.width())
             grid_width = day_width * self.visible_days
             header_rect = QtCore.QRectF(
                 _time_column_width(),
@@ -199,6 +201,66 @@ def _create_schedule_board_class(QtCore: object, QtGui: object, QtWidgets: objec
                     y,
                 )
 
+        def _paint_split_day(self, painter: object) -> None:
+            day_width = _day_column_width(1, self.width())
+            group_width = _time_column_width() + day_width
+            grid_pen = QtGui.QPen(QtGui.QColor("#e2e8f0"), 1)
+            text_pen = QtGui.QPen(QtGui.QColor("#64748b"))
+            strong_pen = QtGui.QPen(QtGui.QColor("#0f172a"))
+            current_date = self.start_date
+
+            for half_index, start_hour in enumerate((0, 12)):
+                group_x = half_index * group_width
+                grid_x = group_x + _time_column_width()
+                header_rect = QtCore.QRectF(
+                    grid_x,
+                    0,
+                    day_width,
+                    _day_header_height(),
+                )
+                painter.fillRect(header_rect, QtGui.QColor("#f8fafc"))
+
+                painter.setPen(strong_pen)
+                font = painter.font()
+                font.setPointSize(10)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(
+                    header_rect,
+                    QtCore.Qt.AlignmentFlag.AlignCenter,
+                    f"{WEEKDAY_NAMES[current_date.weekday()]} {current_date:%d.%m}\n{start_hour:02d}:00-{start_hour + 12:02d}:00",
+                )
+
+                painter.setPen(grid_pen)
+                painter.drawLine(
+                    grid_x,
+                    0,
+                    grid_x,
+                    _day_header_height() + _hour_height() * 12,
+                )
+                painter.drawLine(
+                    grid_x + day_width,
+                    0,
+                    grid_x + day_width,
+                    _day_header_height() + _hour_height() * 12,
+                )
+
+                font = painter.font()
+                font.setPointSize(9)
+                font.setBold(False)
+                painter.setFont(font)
+                for hour_offset in range(13):
+                    hour = start_hour + hour_offset
+                    y = _day_header_height() + hour_offset * _hour_height()
+                    painter.setPen(text_pen)
+                    painter.drawText(
+                        QtCore.QRectF(group_x, y - 10, _time_column_width() - 10, 20),
+                        QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                        f"{hour:02d}:00",
+                    )
+                    painter.setPen(grid_pen)
+                    painter.drawLine(grid_x, y, grid_x + day_width, y)
+
     return ScheduleBoard
 
 
@@ -230,6 +292,7 @@ class MainWindow:
         self.selected_task_label = self.QtWidgets.QLabel("Задача не выбрана")
         self.day_mode_button = self.QtWidgets.QPushButton("День")
         self.week_mode_button = self.QtWidgets.QPushButton("Неделя")
+        self.complete_button = self.QtWidgets.QPushButton("Выполнить")
         self.task_list = self.QtWidgets.QListWidget()
         self.title_input = self.QtWidgets.QLineEdit()
         self.description_input = self.QtWidgets.QPlainTextEdit()
@@ -295,9 +358,29 @@ class MainWindow:
             return
         visible_days = self._visible_day_count()
         if visible_days == self.effective_visible_days:
+            self._refresh_schedule_from_cache()
             return
         self.effective_visible_days = visible_days
-        self.refresh()
+        self._refresh_schedule_from_cache()
+
+    def _refresh_schedule_from_cache(self) -> None:
+        visible_days = self._visible_day_count()
+        schedule_end_date = self.selected_date + timedelta(days=visible_days - 1)
+        schedule_tasks = [
+            task
+            for task in self.task_by_id.values()
+            if task.due_date is not None
+            and self.selected_date <= task.due_date <= schedule_end_date
+        ]
+        self._refresh_day_schedule(schedule_tasks)
+
+    def _schedule_board_width_for_view(self, visible_days: int) -> int:
+        minimum_width = _schedule_board_min_width(visible_days)
+        if hasattr(self, "schedule_scroll"):
+            viewport_width = self.schedule_scroll.viewport().width()
+            if viewport_width > 0:
+                return max(minimum_width, viewport_width)
+        return minimum_width
 
     def _render_schedule_mode_controls(self) -> None:
         self.day_mode_button.setObjectName(
@@ -322,8 +405,8 @@ class MainWindow:
         root_layout.setSpacing(18)
 
         sidebar = self._build_sidebar()
-        sidebar.setMinimumWidth(330)
-        sidebar.setMaximumWidth(410)
+        sidebar.setMinimumWidth(430)
+        sidebar.setMaximumWidth(500)
         root_layout.addWidget(sidebar)
         root_layout.addWidget(self._build_content(), 1)
 
@@ -334,6 +417,7 @@ class MainWindow:
     def _build_sidebar(self) -> object:
         scroll_area = self.QtWidgets.QScrollArea()
         scroll_area.setObjectName("sidebarScroll")
+        scroll_area.setFrameShape(self.QtWidgets.QFrame.Shape.NoFrame)
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(self.QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -363,6 +447,7 @@ class MainWindow:
 
         calendar_frame = self.QtWidgets.QFrame()
         calendar_frame.setObjectName("calendarPanel")
+        calendar_frame.setMinimumWidth(370)
         self.calendar_grid = self.QtWidgets.QGridLayout(calendar_frame)
         self.calendar_grid.setContentsMargins(10, 10, 10, 10)
         self.calendar_grid.setSpacing(6)
@@ -424,16 +509,16 @@ class MainWindow:
 
         self.day_schedule_board.setObjectName("dayScheduleBoard")
         self.day_schedule_board.setFixedSize(
-            _schedule_board_width(self._visible_day_count()),
-            _day_board_height(),
+            self._schedule_board_width_for_view(self._visible_day_count()),
+            _day_board_height(self._visible_day_count()),
         )
-        schedule_scroll = self.QtWidgets.QScrollArea()
-        schedule_scroll.setWidgetResizable(False)
-        schedule_scroll.setObjectName("scheduleScroll")
-        schedule_scroll.setWidget(self.day_schedule_board)
+        self.schedule_scroll = self.QtWidgets.QScrollArea()
+        self.schedule_scroll.setWidgetResizable(False)
+        self.schedule_scroll.setObjectName("scheduleScroll")
+        self.schedule_scroll.setWidget(self.day_schedule_board)
 
         layout.addLayout(header_layout)
-        layout.addWidget(schedule_scroll, 1)
+        layout.addWidget(self.schedule_scroll, 1)
         return panel
 
     def _build_timer_panel(self) -> object:
@@ -507,15 +592,19 @@ class MainWindow:
             self.QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
         )
 
-        time_layout = self.QtWidgets.QHBoxLayout()
+        time_layout = self.QtWidgets.QGridLayout()
+        time_layout.setHorizontalSpacing(10)
+        time_layout.setVerticalSpacing(6)
         start_label = self.QtWidgets.QLabel("Начало")
         start_label.setObjectName("mutedText")
         end_label = self.QtWidgets.QLabel("Окончание")
         end_label.setObjectName("mutedText")
-        time_layout.addWidget(start_label)
-        time_layout.addWidget(self.start_time_input)
-        time_layout.addWidget(end_label)
-        time_layout.addWidget(self.end_time_input)
+        self.start_time_input.setMinimumWidth(118)
+        self.end_time_input.setMinimumWidth(118)
+        time_layout.addWidget(start_label, 0, 0)
+        time_layout.addWidget(end_label, 0, 1)
+        time_layout.addWidget(self.start_time_input, 1, 0)
+        time_layout.addWidget(self.end_time_input, 1, 1)
 
         add_button = self.QtWidgets.QPushButton("Добавить задачу")
         add_button.setObjectName("primaryButton")
@@ -524,8 +613,8 @@ class MainWindow:
         update_button.clicked.connect(self._update_selected_task)
         clear_button = self.QtWidgets.QPushButton("Очистить")
         clear_button.clicked.connect(self._clear_task_form)
-        complete_button = self.QtWidgets.QPushButton("Выполнить")
-        complete_button.clicked.connect(self._complete_selected_task)
+        self.complete_button.setObjectName("completeButton")
+        self.complete_button.clicked.connect(self._complete_selected_task)
         delete_button = self.QtWidgets.QPushButton("Удалить")
         delete_button.setObjectName("dangerButton")
         delete_button.clicked.connect(self._delete_selected_task)
@@ -534,7 +623,7 @@ class MainWindow:
         edit_actions.setSpacing(8)
         edit_actions.addWidget(add_button, 0, 0, 1, 2)
         edit_actions.addWidget(update_button, 1, 0, 1, 2)
-        edit_actions.addWidget(complete_button, 2, 0)
+        edit_actions.addWidget(self.complete_button, 2, 0)
         edit_actions.addWidget(delete_button, 2, 1)
         edit_actions.addWidget(clear_button, 3, 0, 1, 2)
 
@@ -572,7 +661,11 @@ class MainWindow:
                 if count:
                     label += f"\n{count}"
                 button = self.QtWidgets.QPushButton(label)
-                button.setMinimumHeight(42)
+                button.setMinimumSize(44, 42)
+                button.setSizePolicy(
+                    self.QtWidgets.QSizePolicy.Policy.Expanding,
+                    self.QtWidgets.QSizePolicy.Policy.Fixed,
+                )
                 if current_day == self.selected_date:
                     button.setObjectName("selectedDayButton")
                 elif current_day == today:
@@ -595,8 +688,8 @@ class MainWindow:
                 f"{self.selected_date:%d.%m.%Y} - {schedule_end_date:%d.%m.%Y}"
             )
         self.day_schedule_board.setFixedSize(
-            _schedule_board_width(visible_days),
-            _day_board_height(),
+            self._schedule_board_width_for_view(visible_days),
+            _day_board_height(visible_days),
         )
 
         visible_dates = _visible_schedule_dates(self.selected_date, visible_days)
@@ -615,6 +708,7 @@ class MainWindow:
             block.show()
 
         self._render_selected_task_label()
+        self._render_complete_button()
         self._render_selected_timer()
 
     def _create_day_task_block(self, task: Task) -> object:
@@ -624,11 +718,7 @@ class MainWindow:
             def __init__(block_self) -> None:
                 super().__init__(app_window.day_schedule_board)
                 block_self.drag_offset = app_window.QtCore.QPoint(0, 0)
-                block_self.setObjectName(
-                    "selectedScheduleTaskBlock"
-                    if task.id == app_window.selected_task_id
-                    else "scheduleTaskBlock"
-                )
+                block_self.setObjectName(app_window._schedule_block_object_name(task))
                 block_self.setCursor(app_window.QtCore.Qt.CursorShape.OpenHandCursor)
 
                 block_layout = app_window.QtWidgets.QVBoxLayout(block_self)
@@ -657,13 +747,17 @@ class MainWindow:
                     event.position().toPoint() - block_self.drag_offset
                 )
                 visible_days = app_window._visible_day_count()
-                day_width = _day_column_width(visible_days)
-                min_x = _time_column_width()
-                max_x = _time_column_width() + day_width * visible_days - block_self.width()
+                if visible_days == 1:
+                    min_x = _time_column_width()
+                    max_x = app_window.day_schedule_board.width() - block_self.width()
+                else:
+                    day_width = _day_column_width(visible_days, app_window.day_schedule_board.width())
+                    min_x = _time_column_width()
+                    max_x = _time_column_width() + day_width * visible_days - block_self.width()
                 next_x = max(min_x, min(next_position.x(), max_x))
                 next_y = next_position.y()
                 min_y = _day_header_height()
-                max_y = _day_header_height() + 24 * _hour_height() - block_self.height()
+                max_y = _day_header_height() + _visible_hour_count(visible_days) * _hour_height() - block_self.height()
                 block_self.move(next_x, max(min_y, min(next_y, max_y)))
 
             def mouseReleaseEvent(block_self, event: object) -> None:
@@ -677,7 +771,7 @@ class MainWindow:
 
     def _day_task_geometry(self, task: Task) -> tuple[int, int, int, int]:
         visible_days = self._visible_day_count()
-        day_width = _day_column_width(visible_days)
+        day_width = _day_column_width(visible_days, self.day_schedule_board.width())
         task_date = task.due_date or self.selected_date
         day_index = max(0, min((task_date - self.selected_date).days, visible_days - 1))
         start_minutes = _time_to_minutes(task.start_time or time(9, 0))
@@ -685,19 +779,36 @@ class MainWindow:
         if end_minutes <= start_minutes:
             end_minutes = min(24 * 60, start_minutes + 60)
 
-        x = _time_column_width() + day_index * day_width + 10
-        y = _day_header_height() + int(start_minutes * _hour_height() / 60) + 3
+        if visible_days == 1:
+            half_index = 1 if start_minutes >= 12 * 60 else 0
+            half_start_minutes = half_index * 12 * 60
+            group_width = _time_column_width() + day_width
+            x = half_index * group_width + _time_column_width() + 10
+            y = _day_header_height() + int((start_minutes - half_start_minutes) * _hour_height() / 60) + 3
+            duration_minutes = min(end_minutes - start_minutes, 12 * 60 - (start_minutes - half_start_minutes))
+        else:
+            x = _time_column_width() + day_index * day_width + 10
+            y = _day_header_height() + int(start_minutes * _hour_height() / 60) + 3
+            duration_minutes = end_minutes - start_minutes
         width = day_width - 20
-        height = max(36, int((end_minutes - start_minutes) * _hour_height() / 60) - 6)
+        height = max(36, int(duration_minutes * _hour_height() / 60) - 6)
         return x, y, width, height
 
     def _move_task_to_position(self, task: Task, x: int, y: int) -> None:
         visible_days = self._visible_day_count()
-        day_width = _day_column_width(visible_days)
-        day_index = max(0, min((x - _time_column_width() + day_width // 2) // day_width, visible_days - 1))
-        target_date = self.selected_date + timedelta(days=day_index)
-        start_minutes = int((y - _day_header_height()) * 60 / _hour_height())
-        start_minutes = max(0, min(start_minutes, 23 * 60 + 45))
+        day_width = _day_column_width(visible_days, self.day_schedule_board.width())
+        if visible_days == 1:
+            group_width = _time_column_width() + day_width
+            half_index = max(0, min(x // group_width, 1))
+            target_date = self.selected_date
+            start_minutes = half_index * 12 * 60 + int((y - _day_header_height()) * 60 / _hour_height())
+            max_start = 23 * 60 + 45
+        else:
+            day_index = max(0, min((x - _time_column_width() + day_width // 2) // day_width, visible_days - 1))
+            target_date = self.selected_date + timedelta(days=day_index)
+            start_minutes = int((y - _day_header_height()) * 60 / _hour_height())
+            max_start = 23 * 60 + 45
+        start_minutes = max(0, min(start_minutes, max_start))
         start_minutes = _snap_minutes(start_minutes)
         duration = _task_duration_minutes(task)
         end_minutes = min(24 * 60, start_minutes + duration)
@@ -736,6 +847,32 @@ class MainWindow:
             return
         self.selected_task_label.setText(f"Выбрана: {self.selected_task_title}")
 
+    def _render_complete_button(self) -> None:
+        if self.selected_task_id is None:
+            self.complete_button.setText("✓ Выполнить")
+            self.complete_button.setEnabled(False)
+            return
+        task = self.task_by_id.get(self.selected_task_id)
+        if task is not None and task.is_completed:
+            self.complete_button.setText("✓ Выполнено")
+            self.complete_button.setEnabled(False)
+            return
+        self.complete_button.setText("✓ Выполнить")
+        self.complete_button.setEnabled(True)
+
+    def _schedule_block_object_name(self, task: Task) -> str:
+        if task.is_completed:
+            return (
+                "selectedCompletedScheduleTaskBlock"
+                if task.id == self.selected_task_id
+                else "completedScheduleTaskBlock"
+            )
+        return (
+            "selectedActiveScheduleTaskBlock"
+            if task.id == self.selected_task_id
+            else "activeScheduleTaskBlock"
+        )
+
     def _select_task(self, task: Task) -> None:
         self.selected_task_id = task.id
         self.selected_task_title = task.title
@@ -754,6 +891,7 @@ class MainWindow:
             )
         )
         self._render_selected_task_label()
+        self._render_complete_button()
         self._render_selected_timer()
 
     def _refresh_task_list(self, tasks: list[Task]) -> None:
@@ -864,6 +1002,7 @@ class MainWindow:
         self.start_time_input.setTime(self.QtCore.QTime(9, 0))
         self.end_time_input.setTime(self.QtCore.QTime(10, 0))
         self._render_selected_task_label()
+        self._render_complete_button()
         self._render_selected_timer()
         self.refresh()
 
@@ -1263,8 +1402,12 @@ def _time_column_width() -> int:
     return 70
 
 
-def _day_column_width(visible_days: int) -> int:
-    return 690 if visible_days == 1 else 136
+def _day_column_width(visible_days: int, board_width: int | None = None) -> int:
+    if visible_days == 1:
+        available_width = max(_schedule_board_min_width(1), board_width or 0)
+        return max(280, (available_width - _time_column_width() * 2) // 2)
+    available_width = max(_schedule_board_min_width(visible_days), board_width or 0)
+    return max(136, (available_width - _time_column_width()) // visible_days)
 
 
 def _hour_height() -> int:
@@ -1276,15 +1419,21 @@ def _day_header_height() -> int:
 
 
 def _day_board_width() -> int:
-    return _time_column_width() + _day_column_width(1)
+    return _schedule_board_min_width(1)
 
 
-def _schedule_board_width(visible_days: int) -> int:
-    return _time_column_width() + _day_column_width(visible_days) * visible_days
+def _schedule_board_min_width(visible_days: int) -> int:
+    if visible_days == 1:
+        return _time_column_width() * 2 + 280 * 2
+    return _time_column_width() + 136 * visible_days
 
 
-def _day_board_height() -> int:
-    return _day_header_height() + _hour_height() * 24 + 12
+def _visible_hour_count(visible_days: int) -> int:
+    return 12 if visible_days == 1 else 24
+
+
+def _day_board_height(visible_days: int) -> int:
+    return _day_header_height() + _hour_height() * _visible_hour_count(visible_days) + 12
 
 
 def _clear_layout(layout: object) -> None:
@@ -1382,6 +1531,15 @@ QDialog#scheduleDialog {
     border-radius: 12px;
 }
 
+#sidebarScroll {
+    background: transparent;
+    border: none;
+}
+
+#sidebarScroll > QWidget > QWidget {
+    background: transparent;
+}
+
 #scheduleScroll {
     background: #ffffff;
     border: 1px solid #e2e8f0;
@@ -1425,14 +1583,42 @@ QDialog#scheduleDialog {
     border-radius: 10px;
 }
 
+#activeScheduleTaskBlock {
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    border-left: 5px solid #ef4444;
+    border-radius: 10px;
+}
+
+#selectedActiveScheduleTaskBlock {
+    background: #fecaca;
+    border: 2px solid #dc2626;
+    border-left: 5px solid #dc2626;
+    border-radius: 10px;
+}
+
+#completedScheduleTaskBlock {
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    border-left: 5px solid #22c55e;
+    border-radius: 10px;
+}
+
+#selectedCompletedScheduleTaskBlock {
+    background: #bbf7d0;
+    border: 2px solid #16a34a;
+    border-left: 5px solid #16a34a;
+    border-radius: 10px;
+}
+
 #scheduleTaskTitle {
-    color: #1e3a8a;
+    color: #0f172a;
     font-size: 13px;
     font-weight: 700;
 }
 
 #scheduleTaskTime {
-    color: #2563eb;
+    color: #475569;
     font-size: 12px;
 }
 
@@ -1509,6 +1695,28 @@ QPushButton#dangerButton {
 
 QPushButton#dangerButton:hover {
     background: #fecaca;
+}
+
+QPushButton#completeButton {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+}
+
+QPushButton#completeButton:hover {
+    background: #bbf7d0;
+}
+
+QPushButton#completeButton:pressed {
+    background: #86efac;
+    padding-top: 11px;
+    padding-bottom: 9px;
+}
+
+QPushButton#completeButton:disabled {
+    background: #e2e8f0;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
 }
 
 QPushButton#dayButton {
