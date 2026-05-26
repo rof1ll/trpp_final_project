@@ -1,4 +1,4 @@
-"""Application configuration helpers."""
+"""Вспомогательные функции конфигурации приложения."""
 
 from __future__ import annotations
 
@@ -9,5 +9,5 @@ DATABASE_URL_ENV = "TASK_CALENDAR_DATABASE_URL"
 
 
 def database_url_from_env() -> str:
-    """Return the database URL from the environment or the default value."""
+    """Возвращает URL базы данных из окружения или значение по умолчанию."""
     return os.environ.get(DATABASE_URL_ENV, DEFAULT_DATABASE_URL)

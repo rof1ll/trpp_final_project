@@ -1,4 +1,4 @@
-"""PostgreSQL storage for tasks."""
+"""Слой хранения задач в PostgreSQL."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ from .models import Task
 
 
 class TaskRepository:
-    """Persist and load tasks from PostgreSQL."""
+    """Сохраняет задачи в PostgreSQL и загружает их обратно."""
 
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
 
     def initialize(self) -> None:
-        """Create the database schema when it does not exist yet."""
+        """Создает схему базы данных, если она еще не существует."""
         with self._connect() as connection:
             connection.execute(
                 """
@@ -44,10 +44,10 @@ class TaskRepository:
         start_time: time | None = None,
         end_time: time | None = None,
     ) -> Task:
-        """Create a task and return its stored representation."""
+        """Создает задачу и возвращает ее сохраненное представление."""
         title = title.strip()
         if not title:
-            raise ValueError("Task title is required.")
+            raise ValueError("Введите название задачи.")
         _validate_time_range(start_time, end_time)
 
         created_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -69,11 +69,11 @@ class TaskRepository:
             ).fetchone()
 
         if row is None:
-            raise RuntimeError("Task was not stored correctly.")
+            raise RuntimeError("Не удалось корректно сохранить задачу.")
         return _row_to_task(row)
 
     def get_task(self, task_id: int) -> Task | None:
-        """Return one task by id, or None when it does not exist."""
+        """Возвращает задачу по идентификатору или ``None``, если ее нет."""
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT * FROM tasks WHERE id = %s",
@@ -82,7 +82,7 @@ class TaskRepository:
         return _row_to_task(row) if row is not None else None
 
     def list_tasks(self, include_completed: bool = False) -> list[Task]:
-        """Return tasks ordered by completion state, due date, and id."""
+        """Возвращает задачи, упорядоченные по статусу, дате и идентификатору."""
         query = "SELECT * FROM tasks"
         parameters: list[object] = []
         if not include_completed:
@@ -98,7 +98,7 @@ class TaskRepository:
         target_date: date,
         include_completed: bool = True,
     ) -> list[Task]:
-        """Return tasks planned for a specific date."""
+        """Возвращает задачи, запланированные на указанную дату."""
         query = "SELECT * FROM tasks WHERE due_date = %s"
         parameters: list[object] = [target_date]
         if not include_completed:
@@ -114,7 +114,7 @@ class TaskRepository:
         start_date: date,
         end_date: date,
     ) -> dict[date, int]:
-        """Return active task counts grouped by date for a date range."""
+        """Возвращает число активных задач по датам в заданном диапазоне."""
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -140,7 +140,7 @@ class TaskRepository:
         end_date: date,
         include_completed: bool = True,
     ) -> dict[date, int]:
-        """Return task counts grouped by date for a date range."""
+        """Возвращает количество задач по датам в заданном диапазоне."""
         query = """
             SELECT due_date, COUNT(*) AS task_count
             FROM tasks
@@ -168,7 +168,7 @@ class TaskRepository:
         start_time: time | None,
         end_time: time | None,
     ) -> bool:
-        """Move a task to another date and time range."""
+        """Переносит задачу на другую дату и в другой временной интервал."""
         _validate_time_range(start_time, end_time)
         with self._connect() as connection:
             row = connection.execute(
@@ -191,10 +191,10 @@ class TaskRepository:
         start_time: time | None,
         end_time: time | None,
     ) -> bool:
-        """Update editable task fields."""
+        """Обновляет редактируемые поля задачи."""
         title = title.strip()
         if not title:
-            raise ValueError("Task title is required.")
+            raise ValueError("Введите название задачи.")
         _validate_time_range(start_time, end_time)
         with self._connect() as connection:
             row = connection.execute(
@@ -213,7 +213,7 @@ class TaskRepository:
         return row is not None
 
     def complete_task(self, task_id: int) -> bool:
-        """Mark a task as completed and report whether it existed."""
+        """Помечает задачу как выполненную и сообщает, существовала ли она."""
         completed_at = datetime.now(timezone.utc).replace(microsecond=0)
         with self._connect() as connection:
             row = connection.execute(
@@ -228,7 +228,7 @@ class TaskRepository:
         return row is not None
 
     def delete_task(self, task_id: int) -> bool:
-        """Delete a task and report whether it existed."""
+        """Удаляет задачу и сообщает, существовала ли она."""
         with self._connect() as connection:
             row = connection.execute(
                 "DELETE FROM tasks WHERE id = %s RETURNING id",
@@ -249,7 +249,7 @@ def _load_psycopg() -> tuple[Any, Any]:
         from psycopg.rows import dict_row
     except ImportError as error:
         raise RuntimeError(
-            "PostgreSQL driver is not installed. Run "
+            "Драйвер PostgreSQL не установлен. Выполните "
             "`python -m pip install -r requirements.txt`."
         ) from error
     return psycopg, dict_row
@@ -276,7 +276,7 @@ def _value_to_date(value: object) -> date | None:
         return value
     if isinstance(value, str):
         return date.fromisoformat(value)
-    raise TypeError(f"Unsupported date value: {value!r}")
+    raise TypeError(f"Неподдерживаемое значение даты: {value!r}")
 
 
 def _value_to_datetime(value: object) -> datetime | None:
@@ -286,7 +286,7 @@ def _value_to_datetime(value: object) -> datetime | None:
         return value
     if isinstance(value, str):
         return datetime.fromisoformat(value)
-    raise TypeError(f"Unsupported datetime value: {value!r}")
+    raise TypeError(f"Неподдерживаемое значение даты и времени: {value!r}")
 
 
 def _value_to_time(value: object) -> time | None:
@@ -296,9 +296,9 @@ def _value_to_time(value: object) -> time | None:
         return value
     if isinstance(value, str):
         return time.fromisoformat(value)
-    raise TypeError(f"Unsupported time value: {value!r}")
+    raise TypeError(f"Неподдерживаемое значение времени: {value!r}")
 
 
 def _validate_time_range(start_time: time | None, end_time: time | None) -> None:
     if start_time is not None and end_time is not None and end_time <= start_time:
-        raise ValueError("Task end time must be after start time.")
+        raise ValueError("Время окончания должно быть позже времени начала.")

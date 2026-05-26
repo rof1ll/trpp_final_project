@@ -1,4 +1,4 @@
-"""Domain models used by the task manager."""
+"""Предметные модели, используемые приложением задач."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from datetime import date, datetime, time
 
 @dataclass(frozen=True)
 class Task:
-    """A single user task stored by the application."""
+    """Одна пользовательская задача, сохраненная приложением."""
 
     id: int
     title: str

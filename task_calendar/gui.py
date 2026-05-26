@@ -31,7 +31,7 @@ WEEKDAY_NAMES = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
 @dataclass
 class TaskTimerState:
-    """Runtime timer state bound to one task."""
+    """Состояние таймера во время работы, привязанное к одной задаче."""
 
     seconds_left: int
     total_seconds: int
@@ -39,7 +39,7 @@ class TaskTimerState:
 
 
 class MissingPySideError(RuntimeError):
-    """Raised when PySide6 is not installed in the current environment."""
+    """Выбрасывается, если в текущем окружении не установлен PySide6."""
 
 
 def _load_qt() -> tuple[object, object, object]:
@@ -265,7 +265,7 @@ def _create_schedule_board_class(QtCore: object, QtGui: object, QtWidgets: objec
 
 
 class MainWindow:
-    """Main PySide6 window for task planning."""
+    """Главное окно PySide6 для планирования задач."""
 
     def __init__(self, repository: TaskRepository) -> None:
         self.QtCore, self.QtGui, self.QtWidgets = _load_qt()
@@ -317,7 +317,7 @@ class MainWindow:
         self.window.show()
 
     def refresh(self) -> None:
-        """Reload all tasks and redraw the screen."""
+        """Перезагружает все задачи и заново отрисовывает экран."""
         tasks = self.repository.list_tasks(include_completed=True)
         self.task_by_id = {task.id: task for task in tasks}
         active_count = sum(not task.is_completed for task in tasks)
@@ -1360,7 +1360,7 @@ class MainWindow:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Start the desktop application."""
+    """Запускает настольное приложение."""
     parser = argparse.ArgumentParser(description="Открыть календарь задач.")
     parser.add_argument(
         "--database-url",
@@ -1501,9 +1501,9 @@ def _task_duration_minutes(task: Task) -> int:
 
 
 def _translate_storage_error(message: str) -> str:
-    if message == "Task title is required.":
+    if message == "Введите название задачи.":
         return "Введите название задачи."
-    if message == "Task end time must be after start time.":
+    if message == "Время окончания должно быть позже времени начала.":
         return "Время окончания должно быть позже времени начала."
     return message
 

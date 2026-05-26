@@ -1,4 +1,4 @@
-"""Command-line task manager package."""
+"""Пакет приложения для управления задачами."""
 
 __all__ = ["__version__"]
 

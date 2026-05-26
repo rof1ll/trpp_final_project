@@ -1,4 +1,4 @@
-"""PyInstaller launcher for the task calendar GUI."""
+"""Точка входа PyInstaller для графического интерфейса календаря задач."""
 
 from task_calendar.gui import main
 

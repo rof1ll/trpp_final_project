@@ -1,4 +1,4 @@
-"""Run the application with ``python -m task_calendar``."""
+"""Запуск приложения через ``python -m task_calendar``."""
 
 from .gui import main
 
